@@ -384,6 +384,31 @@ td.ck input,.acard input{width:20px;height:20px;accent-color:var(--pasto)}
 @media (max-width:760px){.top-right .sync{order:-1}.sync{font-size:12px;padding:5px 10px}.top-right{flex-wrap:wrap;justify-content:flex-end;min-width:0}.lrow.at{grid-template-columns:minmax(0,1fr) auto}.lrow.at .cnt{display:none}.rr-act{width:100%;justify-content:flex-end}}
 .mc-col[aria-pressed="true"] .mc-bars{box-shadow:none}
 .mc-col[aria-pressed="true"] .mc-lbl{color:var(--ink);font-weight:700;text-decoration:underline;text-decoration-color:var(--trigo);text-decoration-thickness:3px;text-underline-offset:4px}
+.btn svg{width:17px;height:17px}
+.vz-main{display:flex!important;gap:14px;align-items:center;border-color:var(--trigo)!important;background:var(--trigo-soft)!important}
+.vz-ic{width:46px;height:46px;border-radius:50%;background:var(--trigo);color:#1c1405;display:grid;place-items:center;flex:none}
+.vz-ic svg{width:24px;height:24px}
+.vz-mic{display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0}
+.mic-big{width:96px;height:96px;border-radius:50%;border:0;background:var(--trigo);color:#1c1405;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.mic-big svg{width:42px;height:42px}
+.mic-big.on{background:var(--crit);color:#fff;animation:ring 1.2s infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(173,42,31,.45)}100%{box-shadow:0 0 0 22px rgba(173,42,31,0)}}
+@media (prefers-reduced-motion:reduce){.mic-big.on{animation:none}}
+.vz-st{font-weight:600;text-align:center;font-size:15px;max-width:40ch}
+.vz-st.bad{color:var(--crit)}
+.vz-txt{border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:12px;font-size:17px;min-height:110px;width:100%;resize:vertical;line-height:1.4}
+.vz-ej{display:flex;flex-direction:column;gap:6px}
+.vz-ej button{border:1px dashed var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;text-align:left;font-size:13.5px;color:var(--muted)}
+.voz-ban{background:var(--info-bg);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.voz-ban q{font-style:italic;color:var(--ink);opacity:.85}
+.vz-chips{display:flex;flex-wrap:wrap;gap:6px}
+.vz-chips span{background:var(--surface);border-radius:7px;padding:4px 8px;font-weight:600;font-size:13px}
+.vz-chips small{display:block;font-weight:500;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.vz-alt{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.vz-alt > span{font-size:13px;color:var(--muted)}
+.mic-sm{margin-left:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:2px 9px;display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--ink);text-transform:none;letter-spacing:0;vertical-align:middle}
+.mic-sm svg{width:14px;height:14px}
+.mic-sm.on{background:var(--crit);color:#fff;border-color:var(--crit)}
 
 </style>
 </head>
@@ -433,12 +458,208 @@ td.ck input,.acard input{width:20px;height:20px;accent-color:var(--pasto)}
 <script>
 (function(){
 "use strict";
+/* ---------- Dictado: interpreta una frase hablada y la convierte en datos (sin internet, por reglas) ---------- */
+const Voz=(function(){
+  const N=s=>String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[“”"¿?¡!]/g," ");
+  const UN={cero:0,un:1,uno:1,una:1,dos:2,tres:3,cuatro:4,cinco:5,seis:6,siete:7,ocho:8,nueve:9,diez:10,once:11,doce:12,trece:13,catorce:14,quince:15,dieciseis:16,diecisiete:17,dieciocho:18,diecinueve:19,veinte:20,veintiun:21,veintiuno:21,veintiuna:21,veintidos:22,veintitres:23,veinticuatro:24,veinticinco:25,veintiseis:26,veintisiete:27,veintiocho:28,veintinueve:29,
+    treinta:30,cuarenta:40,cincuenta:50,sesenta:60,setenta:70,ochenta:80,noventa:90,cien:100,ciento:100,doscientos:200,doscientas:200,trescientos:300,trescientas:300,cuatrocientos:400,cuatrocientas:400,quinientos:500,quinientas:500,seiscientos:600,seiscientas:600,setecientos:700,setecientas:700,ochocientos:800,ochocientas:800,novecientos:900,novecientas:900};
+  const MULT={mil:1e3,millon:1e6,millones:1e6,palo:1e6,palos:1e6,luca:1e3,lucas:1e3};
+  const TENS=new Set([30,40,50,60,70,80,90]);
+  const numTok=t=>{if(/^\d{1,3}(\.\d{3})+$/.test(t))return +t.replace(/\./g,"");if(/^\d+,\d+$/.test(t))return +t.replace(",",".");if(/^\d+(\.\d{1,2})?$/.test(t))return +t;return null};
+  /* convierte "cuatro millones quinientos mil" / "4 millones 500 mil" / "treinta y dos" en dígitos */
+  function numeros(text){
+    const toks=text.replace(/\$/g," ").replace(/([,;:])(?!\d)/g," $1 ").split(/\s+/).filter(Boolean);
+    const out=[];let i=0;
+    while(i<toks.length){
+      const t=toks[i];const nv=numTok(t),wv=UN[t],mv=MULT[t];
+      if(nv==null&&wv==null&&mv==null){out.push(t);i++;continue}
+      let total=0,cur=0,prev=null,j=i,any=false;
+      while(j<toks.length){
+        const x=toks[j];const n2=numTok(x),w2=UN[x],m2=MULT[x];
+        if(m2!=null){ if(prev==="mult"&&m2<1e6)break; if(m2>=1e6){total+=(cur||1)*m2;cur=0}else{cur=(cur||1)*m2} prev="mult";any=true;j++;
+          if(toks[j]==="y"&&toks[j+1]==="medio"&&m2>=1e6){total+=m2/2;j+=2}
+          if(toks[j]==="de"&&/^pesos?$/.test(toks[j+1]||""))j++;
+          continue}
+        if(n2!=null){ if(prev==="num"||prev==="word")break; cur+=n2;prev="num";any=true;j++;continue}
+        if(w2!=null){ if(prev==="num")break; if(prev==="word"){const last=cur%1000;if(!((last%100===0&&w2<100)||(TENS.has(last%100)&&w2<10)))break} cur+=w2;prev="word";any=true;j++;continue}
+        if(x==="y"&&prev==="word"&&TENS.has(cur%100)&&UN[toks[j+1]]!=null&&UN[toks[j+1]]<10){j++;continue}
+        break;
+      }
+      if(!any){out.push(t);i++;continue}
+      out.push(String(total+cur));i=j;
+    }
+    return out.join(" ").replace(/\s+([,;:])/g,"$1");
+  }
+  const stemRe=name=>{const w=N(name).split(/\s+/).filter(Boolean).map(x=>x.replace(/(es|s)$/,"").replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));return new RegExp("\\b"+w.map(x=>x+"(?:es|s)?").join("\\s+(?:de\\s+)?")+"\\b")};
+  function findList(t,list){let best=null;(list||[]).forEach(it=>{if(!it)return;const m=t.match(stemRe(it));if(m&&(!best||N(it).length>N(best.v).length))best={v:it,i:m.index,len:m[0].length}});return best}
+  const MESES=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+  const RAZAS=["Aberdeen Angus","Angus","Brangus","Braford","Hereford","Holando","Shorthorn","Limousin","Charolais","Criollo","Criolla","Cebú","Brahman","Merino","Corriedale","Texel","Hampshire","Cuarto de Milla","Árabe","Percherón","Polled Hereford"];
+  const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+  const iso=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  function fecha(t,hoy){
+    const d=new Date(hoy+"T12:00:00");
+    if(/\banteayer\b/.test(t)){d.setDate(d.getDate()-2);return iso(d)}
+    if(/\bayer\b/.test(t)){d.setDate(d.getDate()-1);return iso(d)}
+    let m=t.match(/\b(\d{1,2})\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)(?:\s+(?:de\s+)?(\d{4}))?/);
+    if(m){const mi=m[2]==="setiembre"?8:MESES.indexOf(m[2]);const y=m[3]?+m[3]:d.getFullYear();const r=new Date(y,mi,+m[1],12);if(!m[3]&&r>d)r.setFullYear(y-1);return iso(r)}
+    m=t.match(/\b(?:el\s+)?(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?\b/);
+    if(m&&+m[2]<=12){let y=m[3]?+m[3]:d.getFullYear();if(y<100)y+=2000;return iso(new Date(y,+m[2]-1,+m[1],12))}
+    return hoy;
+  }
+  const plazoDias=(n,u)=>/mes/.test(u)?Math.round(n*30.44):/semana/.test(u)?n*7:/ano/.test(u)?n*365:n;
+  function prox(t,base){
+    const m=t.match(/\b(?:proxima|proximo|repetir|repite|refuerzo|volver|vuelve|revacunar|segunda dosis|otra dosis|repetimos)\b[^.]*?\b(?:en|a los|a las|dentro de|a)\s+(\d+|un|una)\s*(dias?|semanas?|mes(?:es)?|anos?)\b/)||t.match(/\b(?:en|dentro de)\s+(\d+|un|una)\s*(mes(?:es)?|anos?|semanas?)\b(?=[^.]*\b(?:proxima|repet|refuerzo)\b)/);
+    if(m){const n=/^\d+$/.test(m[1])?+m[1]:1;const d=new Date(base+"T12:00:00");d.setDate(d.getDate()+plazoDias(n,m[2]));return iso(d)}
+    if(/\b(?:sin|no hay|no lleva) (?:proxima|refuerzo)\b/.test(t))return "";
+    return null;
+  }
+  const PRE=/(?:caravanas?|numeros?|nros?|nro|n°|la|el|las|los|y|,)/;
+  function caravanas(t){
+    const out=[];let m;
+    const rr=/\b(?:caravanas?\s+)?(?:de\s+la|del|de\s+el|desde\s+la|desde)\s+([a-z]{0,3}-?\d{1,6})\s+(?:a\s+la|al|hasta\s+la|hasta)\s+([a-z]{0,3}-?\d{1,6})\b/g;
+    while((m=rr.exec(t))){const a=m[1].match(/^([a-z]{0,3}-?)(\d+)$/),b=m[2].match(/^([a-z]{0,3}-?)(\d+)$/);if(a&&b&&+b[2]>=+a[2]&&+b[2]-+a[2]<2000){for(let n=+a[2];n<=+b[2];n++)out.push(a[1]+String(n).padStart(a[2].length,"0"))}}
+    const lr=/\bcaravanas?\s+(?:numeros?\s+|nros?\s+)?((?:[a-z]{0,3}-?\d{1,6})(?:\s*(?:,|y)\s*(?:la\s+|el\s+)?[a-z]{0,3}-?\d{1,6})*)/g;
+    while((m=lr.exec(t))){if(/\b(de|desde)\s*$/.test(t.slice(0,m.index)))continue;m[1].split(/\s*(?:,|y)\s*(?:la\s+|el\s+)?/).forEach(x=>{x=x.trim();if(x&&!out.includes(x))out.push(x)})}
+    return out;
+  }
+  const matchAnims=(ids,anims)=>{const res=[],miss=[];const key=s=>N(s).replace(/[^a-z0-9]/g,"");
+    ids.forEach(c=>{const k=key(c);let a=anims.filter(x=>key(x.caravana)===k);if(!a.length&&/^\d+$/.test(k))a=anims.filter(x=>{const d=key(x.caravana).match(/(\d+)$/);return d&&+d[1]===+k});if(a.length===1)res.push(a[0].id);else if(a.length>1)res.push(a[0].id);else miss.push(c)});
+    return {ids:res,miss}};
+  const MONEY=/(\d+(?:\.\d+)?)\s*(?:pesos|\$)?/;
+  function montos(t){const out=[];const r=/(?:\$\s*)?\b(\d{4,}|\d+(?:\.\d+)?(?=\s*(?:pesos|millones)))\b(?:\s*pesos)?/g;let m;while((m=r.exec(t)))out.push({v:+m[1],i:m.index,end:m.index+m[0].length});return out}
+  function lote(t,known){
+    const k=findList(t,known);if(k)return k.v;
+    const m=t.match(/\b(lote|potrero|corral|cuadro|piquete)\s+(?:del?\s+|la\s+|el\s+)?([a-z0-9ñ]+(?:\s+(?!con\b|en\b|de\b|del\b|a\b|al\b|y\b|el\b|la\b|para\b|hoy\b|ayer\b)[a-z0-9ñ]+)?)/);
+    if(!m)return "";return cap(m[1])+" "+m[2];
+  }
+  function contra(t,known){
+    const k=findList(t,known);if(k)return k.v;
+    let m=t.match(/\b(?:cliente|comprador|proveedor|a nombre de|al senor|a la senora|a don|a dona)\s+([a-z0-9ñ]+(?:\s+(?!a\b|al\b|de\b|del\b|en\b|con\b|por\b|y\b|el\b|la\b|cada\b|pesos\b|transferencia\b|cheques?\b|efectivo\b|canje\b|contado\b)[a-zñ]{2,})?)/);
+    if(m){const w=m[0].split(/\s+/)[0];return (/(cliente|comprador|proveedor)/.test(w)?cap(w)+" ":"")+m[1].split(" ").map(cap).join(" ")}
+    m=t.match(/\b(?:le\s+)?(?:vend\w*|venta|compr\w*|compra|cedi\w*|cesion)\b.*?\b(?:a|de)\s+(?:la\s+|el\s+)?(?:senor\s+|senora\s+|don\s+|dona\s+)?([a-z]{3,}(?:\s+[a-z]{3,})?)\b/);
+    if(m&&!/^(cada|pesos|transferencia|cheque|efectivo|canje|contado|plazo|dias|meses|razon|toros?|vacas?|novillos?|terneros?)/.test(m[1]))return m[1].split(" ").map(cap).join(" ");
+    return "";
+  }
+  const AT=[["vacun",/\bvacun|aftosa|brucel|carbunc|clostrid|mancha|queratoconj/],["desparasit",/desparasit|antiparasit|\bbano\b|banamos|ivermect|doramect|levamisol|albendazol|pour on/],["insemin",/insemin|\biatf\b|pajuela/],["tacto",/\btact|diagnost|ecograf/],
+    ["parto",/\bpari|\bparto|pario|parieron/],["destete",/destet/],["pesada",/\bpes(e|o|amos|aron|ada|aje|a)\b|\bkilos\b|\bkg\b/],["castr",/castr/],["senal",/senal|marcac|marcamos|marque|yerra/],["herr",/herr(e|amos|aron|ado|aje)|desvas|cascos/],
+    ["esquil",/esquil/],["revis",/revis|veterinari|control sanitario/],["muerte",/\bmuri|\bmuert|\bmurio|\bmurieron|\bpalm/],["servicio",/servicio natural|\bentor|servimos|\btoro con\b/],["cura",/\bcur(e|o|amos|aron|acion|ada)\b|bichera|mosca/],["trat",/\btrat|antibiot|inyect|oxitetra|penicilina/],["doma",/\bdoma|amans|redomon/]];
+  const OPK=[["Venta",/\bvend|\bventa\b/],["Compra",/\bcompr/],["Cesión",/\bced(i|imos|io)\b|\bcesion|consign/],["Canje",/\bcanje(amos|e)?\b|\bcambiamos\b/],["Faena",/\bfaena|frigorific/],["Pastaje",/pastaje|capitaliz/],["Inseminación",/cobr\w* (la )?insemin/],["Servicio",/cobr\w* (el )?servicio|servicio de toro/],["Doma",/cobr\w* (la )?doma/]];
+  const MEDIOS=[["Transferencia",/transfer/],["E-cheq",/e ?cheq|echeq/],["Cheque",/\bcheques?\b/],["Efectivo",/efectivo|contado en mano|cash/],["Canje",/\bcanje|\ben animales\b|\bcon terneros\b/],["Pagaré",/pagare/]];
+  function intent(t){
+    const op=/\b(vend|compr|ced(i|imos)|cesion|consign|pastaje|capitaliz)|\b(pesos|millones|palos|transferencia|cheques?|efectivo|precio)\b|\$/.test(t);
+    const alta=/\b(dar de alta|alta de|alta|nuevo animal|nueva vaca|nuevos animales|ingresaron|ingreso de|registrar animal)\b/.test(t);
+    const at=AT.some(([,r])=>r.test(t));
+    if(alta&&!/\b(vacun|desparasit|tact|pesada)\b/.test(t))return "alta";
+    if(op&&/\b(vend|compr|ced|cesion|consign|canje|cobr|pastaje|capitaliz)/.test(t))return "op";
+    if(at)return "at";if(op)return "op";
+    if(/caravana/.test(t))return "alta";
+    return null;
+  }
+  function tipoAt(t,cfgTipos){for(const [k,r] of AT){if(r.test(t)){const f=cfgTipos.find(x=>N(x.n).includes(k==="cura"?"cura":k==="trat"?"trat":k));return f?f.n:cap(k)}}return cfgTipos[0].n}
+  const SEXO_H=/\b(vacas?|vaquillonas?|terneras?|yeguas?|potrancas?|ovejas?|borregas?|cabras?|cerdas?|chanchas?|hembras?|madres?)\b/,SEXO_M=/\b(toros?|novillos?|novillitos?|terneros?|caballos?|potrillos?|padrillos?|carneros?|capones?|machos?|cerdos?|chanchos?|castrados?)\b/;
+  function especie(t){if(/\b(caballos?|yeguas?|potrillos?|potrancas?|padrillos?|equinos?|mulas?)\b/.test(t))return "Equino";if(/\b(ovejas?|carneros?|corderos?|borregas?|capones?|ovinos?)\b/.test(t))return "Ovino";if(/\b(cerdos?|cerdas?|chanchos?|chanchas?|lechones?|porcinos?)\b/.test(t))return "Porcino";if(/\b(cabras?|chivos?|caprinos?)\b/.test(t))return "Caprino";return null}
+
+  const restore=(raw,ph)=>{const i=N(raw).indexOf(N(ph));if(i<0)return ph;return raw.substr(i,ph.length).split(/\s+/).map(cap).join(" ")};
+  function parse(raw,ctx,force){
+    const hoy=ctx.hoy;let t=numeros(N(raw));
+    const kind=force||intent(t);
+    const res={kind,texto:raw,fill:{},entendido:[]};const E=(l,v)=>{if(v!==""&&v!=null)res.entendido.push([l,v])};
+    const f=res.fill;
+    f.fecha=fecha(t,hoy);if(f.fecha!==hoy)E("Fecha",f.fecha.split("-").reverse().join("/"));
+    const est=findList(t,ctx.ests);if(est){f.est=est.v;E("Campo",est.v)}
+    const catM=findList(t,ctx.cats);
+    const qtyBefore=(m)=>{if(!m)return null;const pre=t.slice(Math.max(0,m.i-14),m.i);const q=pre.match(/(\d+)\s+(?:de\s+)?(?:las?\s+|los?\s+)?$/);return q?+q[1]:null};
+    if(kind==="at"){
+      f.tipo=tipoAt(t,ctx.tiposAt);E("Atención",f.tipo);
+      const prod=findList(t,ctx.productos);if(prod){f.producto=prod.v;E("Producto",prod.v)}else{const m=t.match(/\bcon\s+([a-z][a-z0-9 ]{2,30}?)(?=\s+\d|,|\.|\s+(?:en|a|al|del|de la|por|y)\b|$)/);if(m&&!/^(el|la|los|las|un|una|1|todo|todos)\b/.test(m[1])&&/vacun|desparasit|trat|cura|insemin/i.test(N(f.tipo))){f.producto=cap(m[1].trim());E("Producto",f.producto)}}
+      const d=t.match(/\b(\d+(?:[.,]\d+)?)\s*(ml|cc|cm3|cm 3|mg|gr|g|dosis|comprimidos?|centimetros cubicos|mililitros)\b/);if(d){f.dosis=d[1].replace(".",",")+" "+(/^(cc|cm|centimetros|mililitros)/.test(d[2])?"ml":d[2]);E("Dosis",f.dosis)}
+      const via=[["Subcutánea",/subcut|bajo la piel/],["Intramuscular",/intramusc|en el musculo/],["Oral",/\boral|por boca|bebida/],["Pour-on",/pour ?on|sobre el lomo|derrame/],["Intravenosa",/intraven|en vena/],["Intranasal",/nasal/]].find(([,r])=>r.test(t));if(via){f.via=via[0];E("Vía",via[0])}
+      const p=prox(t,f.fecha);if(p!=null){f.prox=p;E("Próxima",p?p.split("-").reverse().join("/"):"no")}
+      const costo=t.match(/\b(?:costo|costaron|salio|salieron|gaste|gastamos|pague|pagamos|total de)\s+(?:de\s+)?(\d+)/);if(costo){f.costo=+costo[1];E("Costo","$ "+(+costo[1]).toLocaleString("es-AR"))}
+      const resp=t.match(/\b(?:lo hizo|la hizo|lo hicieron|responsable|veterinari[oa]|hecho por|a cargo de)\s+(?:el\s+|la\s+)?([a-z]{3,}(?:\s+[a-z]{3,})?)/);if(resp&&!/^(con|del|que)$/.test(resp[1])){f.resp=restore(raw,resp[1]);E("Responsable",f.resp)}
+      const pr=t.match(/(\d+)\s+(?:quedaron\s+|salieron\s+|dieron\s+)?pre[nñ]ad[ao]s?/),va=t.match(/(\d+)\s+(?:quedaron\s+|salieron\s+|dieron\s+)?vac[ií]as?/);
+      if(pr||va){f.res=[pr?pr[1]+" preñadas":"",va?va[1]+" vacías":""].filter(Boolean).join(", ");E("Resultado",f.res)}
+      else{const r1=t.match(/\b(prenada|vacia|cabeza de paricion|cola de paricion|recuperad[oa]|en tratamiento|apto|no apto|macho|hembra)\b/);if(r1&&/tacto|revis|parto|trat|cura/i.test(f.tipo)){f.res=cap(r1[1]).replace("Prenada","Preñada").replace("Vacia","Vacía");E("Resultado",f.res)}}
+      if(/muerte/i.test(f.tipo)){const c=t.match(/\b(?:por|de)\s+(empaste|mancha|carbunc\w*|diarrea|neumonia|parto|rayo|frio|sequia|accidente|bichera|tristeza|intoxicacion|mordedura|robo)\b/);if(c){f.res=cap(c[1]);E("Causa",f.res)}}
+      const cars=caravanas(t);const L=lote(t,ctx.lotes);
+      const act=ctx.anims.filter(a=>(a.estado||"activo")==="activo");
+      if(cars.length){const m=matchAnims(cars,ctx.anims);if(m.ids.length){f.modo="anim";f.anims=m.ids;E("Animales",m.ids.length+(m.miss.length?` (no encontré: ${m.miss.join(", ")})`:""))}if(m.miss.length&&!m.ids.length)res.aviso=`No encontré las caravanas ${m.miss.join(", ")}.`}
+      if(/pesada/i.test(f.tipo)){const pr2=/(?:\b(?:la|el|caravana|nro|numero)\s+)([a-z]{0,3}-?\d{1,6})\s+(?:peso|pesa|con|dio|:)?\s*(\d{2,4})(?:\s*(?:kg|kilos))?/g;let m,pairs=[];while((m=pr2.exec(t)))pairs.push([m[1],+m[2]]);
+        if(pairs.length){const mm=matchAnims(pairs.map(p=>p[0]),ctx.anims);f.modo="anim";f.anims=[...new Set((f.anims||[]).concat(mm.ids))];f.pesos={};pairs.forEach(([c,kg])=>{const x=matchAnims([c],ctx.anims).ids[0];if(x)f.pesos[x]=kg});E("Pesos",Object.keys(f.pesos).length+" animales")}}
+      if(!f.anims||!f.anims.length){
+        const inLote=L?act.filter(a=>N(a.lote)===N(L)&&(!f.est||a.est===f.est)):[];
+        const q=qtyBefore(catM)||(t.match(/(\d+)\s+(?:animales|cabezas|bichos|vientres)\b/)||[])[1];
+        if(inLote.length&&!q){f.modo="anim";f.anims=(catM?inLote.filter(a=>N(a.cat)===N(catM.v)):inLote).map(a=>a.id);if(!f.anims.length)f.anims=inLote.map(a=>a.id);E("Animales",`${f.anims.length} del ${L}`)}
+        else{f.modo="lote";if(L){f.lote=L;E("Lote",L)}if(catM){f.cat=catM.v;E("Categoría",catM.v)}if(q){f.cant=+q;E("Cantidad",q)}}
+      }
+    }
+    else if(kind==="op"){
+      const tp=OPK.find(([,r])=>r.test(t));f.tipo=tp?tp[0]:"Venta";const ti=ctx.tipos.find(x=>N(x.n)===N(f.tipo));if(ti){f.tipo=ti.n;f.sentido=ti.s}E("Operación",f.tipo);
+      if(catM){f.cat=catM.v;E("Animal",catM.v);const q=qtyBefore(catM);if(q){f.cant=q;E("Cantidad",q)}}
+      if(!f.cant){const q=t.match(/(\d+)\s+(?:animales|cabezas|cab)\b/);if(q){f.cant=+q[1];E("Cantidad",q[1])}}
+      const kg=t.match(/(\d+)\s*(?:kg|kilos)\b(?!\s*(?:cada|c\/u))/);
+      let c=contra(t,ctx.contras);if(c&&!(ctx.contras||[]).includes(c))c=restore(raw,c);if(c){f.contra=c;E(f.sentido==="egreso"?"Proveedor":"Cliente",c)}
+      // precio / total
+      const unit=t.match(/\b(?:a|por|de)\s+(\d+)\s*(?:pesos\s*)?(?:cada\s*(?:uno|una|cabeza|animal)?|c\/u|por\s+(?:cabeza|animal|unidad)|la\s+cabeza|el\s+animal|por\s+cab)\b/)||t.match(/\bprecio\s+(?:de\s+|por\s+cabeza\s+)?(\d+)/);
+      const tot=t.match(/\b(?:por\s+un\s+total\s+de|total\s+(?:de\s+)?|en\s+total\s+|por)\s+(\d{4,})\b(?!\s*(?:cada|c\/u|por cabeza))/);
+      const perKg=t.match(/\b(?:a|por)\s+(\d+)\s*(?:pesos\s*)?(?:el|por)\s+kilo/);
+      if(unit){f.precio=+unit[1];E("Precio por cabeza","$ "+f.precio.toLocaleString("es-AR"))}
+      else if(perKg&&kg){f.kg=+kg[1];f.total=Math.round(+perKg[1]*f.kg);E("Kilos",f.kg);E("Precio por kilo","$ "+(+perKg[1]).toLocaleString("es-AR"))}
+      else if(!tot){const a=t.match(/\ba\s+(\d{4,})\b/);if(a&&f.cant){f.precio=+a[1];E("Precio por cabeza","$ "+f.precio.toLocaleString("es-AR"))}}
+      if(tot&&!f.total){f.total=+tot[1];E("Total","$ "+f.total.toLocaleString("es-AR"))}
+      if(kg&&!f.kg){f.kg=+kg[1]}
+      const total=f.total||(f.cant&&f.precio?f.cant*f.precio:0);
+      // formas de pago
+      const formas=[];let txt=t;
+      const chq=txt.match(/(\d+)\s+cheques?\s+(?:de\s+(\d+)\s+)?(?:a|con vencimiento a|a los)\s+(\d+(?:\s*(?:,|y)\s*\d+)*)\s*dias/);
+      if(chq){const pl=chq[3].split(/\s*(?:,|y)\s*/).map(Number);const n=+chq[1];const each=chq[2]?+chq[2]:null;for(let k=0;k<n;k++)formas.push({medio:ctx.medios.find(m=>/^cheque$/i.test(m))||"Cheque",monto:each,plazo:pl[k]!=null?pl[k]:pl[pl.length-1],det:(k+1)+"° cheque"});txt=txt.replace(chq[0]," ")}
+      const clauses=txt.split(/,|;|\s+y\s+(?=(?:\d|el resto|la diferencia|en |con |por |mitad|de contado|al contado|transfer|efectivo|cheque|canje))|\s+mas\s+/);
+      clauses.forEach(cl=>{const md=MEDIOS.find(([,r])=>r.test(cl));if(!md)return;
+        const name=ctx.medios.find(m=>N(m)===N(md[0]))||md[0];
+        let am=cl.match(/\b(\d{4,})\b(?!\s*(?:pesos\s*)?(?:cada|c\/u|por cabeza|la cabeza|el kilo|por kilo))/);if(am&&(+am[1]===f.precio||+am[1]===f.total&&formas.length===0&&!/\b(en|de)\s+\d/.test(cl)))am=null;const half=/\bmitad\b/.test(cl);
+        const pl=cl.match(/\ba\s+(\d+)\s*(dias?|mes(?:es)?)/);const cont=/contado|en el acto|al dia\b|en mano/.test(cl)||/efectivo|canje/i.test(name)&&!pl;
+        let det="";if(/canje/i.test(name)){const cm=findList(cl,ctx.cats);const q=cm?cl.slice(0,cm.i).match(/(\d+)\s*$/):null;if(cm)det=(q?q[1]+" ":"")+cm.v.toLowerCase()}
+        formas.push({medio:name,monto:am?+am[1]:half&&total?Math.round(total/2):null,plazo:pl?plazoDias(+pl[1],pl[2]):cont?0:null,det,resto:/resto|diferencia|saldo/.test(cl)});
+      });
+      const gp=t.match(/\ba\s+(\d+)\s*(dias?|mes(?:es)?)\b/);const gpd=gp?plazoDias(+gp[1],gp[2]):(/contado/.test(t)?0:null);
+      if(formas.length){
+        const fixed=formas.reduce((s,x)=>s+(x.monto||0),0);const free=formas.filter(x=>!x.monto);
+        if(total&&free.length){const rest=Math.max(0,total-fixed);free.forEach(x=>x.monto=Math.round(rest/free.length))}
+        const ya=/\b(ya (me )?(pago|pagaron|cobre|cobramos|esta cobrado|esta pagado)|cobrado|pagado en el acto|pago en el acto)\b/.test(t);
+        f.formas=formas.map(x=>{const pd=x.plazo!=null?x.plazo:(gpd!=null?gpd:30);const d=new Date(f.fecha+"T12:00:00");d.setDate(d.getDate()+pd);return {medio:x.medio,monto:x.monto||0,venc:iso(d),det:x.det||"",ya:ya||pd===0&&/efectivo|canje/i.test(x.medio)}});
+        E("Pago",f.formas.map(x=>x.medio+(x.monto?" $ "+x.monto.toLocaleString("es-AR"):"")).join(" + "));
+      }else if(gpd!=null){f.plazoGlobal=gpd;E("Plazo",gpd?gpd+" días":"contado")}
+    }
+    else if(kind==="alta"){
+      const cars=caravanas(t);let single=null;
+      if(!cars.length){const m=t.match(/\b(?:caravana|numero|nro|n°)\s+([a-z]{0,3}-?\d{1,6})\b/);if(m)single=m[1]}
+      const list=cars.length?cars:single?[single]:[];
+      f.caravanas=list.map(x=>x.toUpperCase());if(list.length)E("Caravanas",list.length>3?list.length+" ("+list[0].toUpperCase()+" a "+list[list.length-1].toUpperCase()+")":f.caravanas.join(", "));
+      if(catM){f.cat=catM.v;E("Categoría",catM.v)}
+      const raza=findList(t,uniqL(RAZAS.concat(ctx.razas||[])));if(raza){f.raza=raza.v;E("Raza",raza.v)}
+      const esp=especie(t)||(f.cat?especie(N(f.cat)):null);if(esp){f.esp=ctx.especies.find(x=>N(x)===N(esp))||esp;E("Especie",f.esp)}
+      if(/\bmach[oa]s?\b/.test(t)||(!/\bhembras?\b/.test(t)&&SEXO_M.test(t)))f.sexo="M";if(/\bhembras?\b/.test(t)||(!/\bmach/.test(t)&&SEXO_H.test(t)))f.sexo="H";if(f.sexo)E("Sexo",f.sexo==="M"?"Macho":"Hembra");
+      const L=lote(t,ctx.lotes);if(L){f.lote=L;E("Lote",L)}
+      const w=t.match(/(\d{2,4})\s*(?:kg|kilos)\b/)||t.match(/\bpes(?:a|o|aba)\s+(\d{2,4})\b/);if(w){f.pesoIni=+w[1];E("Peso",w[1]+" kg")}
+      const age=t.match(/\bde\s+(\d+)\s*(mes(?:es)?|anos?)\b/);if(age){const d=new Date(hoy+"T12:00:00");d.setDate(d.getDate()-Math.round(/mes/.test(age[2])?+age[1]*30.44:+age[1]*365));f.nac=iso(d);E("Nacimiento aprox.",f.nac.split("-").reverse().join("/"))}
+      else if(/\bnaci(o|eron)\b/.test(t)){f.nac=f.fecha;E("Nacimiento",f.nac.split("-").reverse().join("/"))}
+      const madre=t.match(/\b(?:hij[oa] de|madre)\s+(?:la\s+)?(?:caravana\s+)?([a-z]{0,3}-?\d{1,6})\b/);if(madre){f.madre=madre[1].toUpperCase();E("Madre",f.madre)}
+      const sinC=t.match(/(\d+)\s+(?:animales\s+)?sin\s+caravana/);if(sinC){f.sinCaravana=+sinC[1];E("Sin caravana",sinC[1])}
+      else if(!list.length){const q=qtyBefore(catM);if(q&&q>1){f.sinCaravana=q;E("Cantidad sin caravana",q)}}
+    }
+    return res;
+  }
+  const uniqL=a=>[...new Set(a.filter(Boolean))];
+  return {parse,numeros,N};
+})();
+
+
 /* =====================================================================
    ARRAGEN · Gestión ganadera — app offline con sincronización a Google Sheets
    Si alojás esta página fuera de Google (GitHub Pages, Netlify…), pegá abajo
    la URL de la app web de Apps Script (termina en /exec).
    ===================================================================== */
-const API_URL = "https://script.google.com/macros/s/AKfycbxBLhMxEfZOJFUPYBakEPhtALR8626y6fyUvRfJ2thluYMFP0V-9lFAoF01GNGT8DN0CA/exec";
+const API_URL = "";
 
 /* ---------- Config por defecto (se edita en Ajustes) ---------- */
 const DEF={empresa:"ARRAGEN",sub:"Gestión ganadera",
@@ -652,11 +873,77 @@ $("#sync").onclick=()=>{S.syncErr=null;sync()};
 $("#btnMore").onclick=()=>{const m=$("#more");m.hidden=!m.hidden};
 function closeMore(){const m=$("#more");if(m)m.hidden=true}
 
+
+/* ================= DICTADO POR VOZ ================= */
+const SRC=window.SpeechRecognition||window.webkitSpeechRecognition;
+const MIC='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>';
+let REC=null;
+function vozLocal(){try{return localStorage.getItem("arragen.vozLocal")==="1"}catch(e){return false}}
+function listen(onText,onEnd){
+  if(!SRC){onEnd("nosr");return null}
+  try{if(REC)REC.abort()}catch(e){}
+  const r=new SRC();r.lang="es-AR";r.interimResults=true;r.continuous=false;r.maxAlternatives=1;
+  try{if(vozLocal()&&"processLocally" in r)r.processLocally=true}catch(e){}
+  r.onresult=e=>{let fin="",int="";for(let i=0;i<e.results.length;i++){const t=e.results[i][0].transcript;if(e.results[i].isFinal)fin+=t;else int+=t}onText(fin.trim(),int.trim())};
+  r.onerror=e=>{r._err=e.error};
+  r.onend=()=>{if(REC===r)REC=null;onEnd(r._err)};
+  try{r.start();REC=r}catch(e){onEnd("start")}
+  return r;
+}
+const vozErr=c=>c==="not-allowed"||c==="service-not-allowed"?"El celu no dio permiso al micrófono. Habilitalo para esta página en los ajustes del navegador.":c==="network"?"El dictado de este celu necesita señal. Sin señal, tocá el cuadro y usá el micrófono del teclado (en Gboard podés descargar el español para dictar sin conexión).":c==="no-speech"?"No escuché nada. Probá de nuevo, más cerca del celu.":c==="audio-capture"?"No encuentro el micrófono.":c==="language-not-supported"?"Este celu no tiene el dictado en español para usar sin señal.":c==="aborted"?"":c?"No se pudo usar el dictado. Podés escribir o usar el micrófono del teclado.":"";
+function vozCtx(){const C=cfg();return {hoy:HOY,ests:estsAll(),cats:uniq(C.cats.concat(L("animales").map(a=>a.cat),L("ops").map(o=>o.cat))),lotes:lotesAll(),productos:uniq(C.productos.concat(L("eventos").map(e=>e.producto))),
+  tiposAt:tiposAt(),tipos:tipos(),medios:medios(),contras:uniq(L("ops").map(o=>o.contra)),anims:L("animales"),especies:C.especies,razas:uniq(L("animales").map(a=>a.raza))}}
+const VOZ_EJ=["Vacuné 30 terneros del lote destete con aftosa 2 ml, próxima en 6 meses","Tacto a 15 vacas del potrero 1, 12 preñadas y 3 vacías","Pesada: la EA-201 pesó 171, la EA-202 180 kilos","Vendí 20 toros brangus a 4.500.000 cada uno a Cliente A, transferencia a 30 días","Venta de 30 vaquillonas a 2 millones cada una, 36 millones en canje de 30 terneros y el resto en efectivo","Alta de la vaquillona caravana 452 brangus en el potrero 3, pesa 320 kilos"];
+function openVoz(txt,msg){
+  if(!canW())return toast("Tu clave es de sólo lectura.");
+  const ov=$("#ovPago");
+  ov.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="vzT" style="max-width:560px"><div class="sh-h"><h3 id="vzT">Dictar</h3><button class="x" data-close aria-label="Cerrar">×</button></div>
+   <div class="sh-b">
+    ${msg?`<div class="banner demo">${msg}</div>`:""}
+    ${SRC?`<div class="vz-mic"><button type="button" class="mic-big" id="vzMic" aria-label="Hablar">${MIC}</button><div class="vz-st" id="vzSt">Tocá el micrófono y contá qué hiciste.</div></div>`
+      :`<div class="banner ej">Este navegador no trae dictado propio. Tocá el cuadro de abajo y usá el micrófono del teclado del celu.</div>`}
+    <textarea id="vzTxt" class="vz-txt" placeholder="Ej: ${esc(VOZ_EJ[0])}" aria-label="Lo que dictaste">${esc(txt||"")}</textarea>
+    <p class="hint" style="margin:0">Podés corregir el texto antes de completar. Nada se guarda hasta que lo revisás en el formulario.</p>
+    <div class="fs"><span class="lab">Ejemplos de cómo decirlo</span><div class="vz-ej">${VOZ_EJ.map((e,i)=>`<button type="button" data-ej="${i}">${esc(e)}</button>`).join("")}</div></div>
+   </div>
+   <div class="sh-f"><span class="grow"></span><span class="err" id="vzErr"></span><button class="btn" data-close>Cancelar</button><button class="btn btn-prim" id="vzGo">Completar formulario</button></div></div>`;
+  ov.hidden=false;document.body.style.overflow="hidden";
+  const g=i=>ov.querySelector("#"+i);const ta=g("vzTxt");
+  const close=()=>{try{if(REC)REC.abort()}catch(e){}ov.hidden=true;ov.innerHTML="";document.body.style.overflow=""};
+  ov.querySelectorAll("[data-close]").forEach(b=>b.onclick=close);ov.onclick=e=>{if(e.target===ov)close()};
+  ov.querySelectorAll("[data-ej]").forEach(b=>b.onclick=()=>{ta.value=VOZ_EJ[+b.dataset.ej];ta.focus()});
+  const mic=g("vzMic");
+  const start=()=>{const base=ta.value.trim();mic.classList.add("on");g("vzSt").textContent="Escuchando… hablá normal y hacé una pausa al terminar.";
+    listen((fin,int)=>{ta.value=(base?base+" ":"")+fin+(int?(fin?" ":"")+int:"")},err=>{if(!g("vzSt"))return;mic.classList.remove("on");const m=vozErr(err);g("vzSt").textContent=m||"Listo. Revisá el texto, tocá el micrófono para agregar más o completá el formulario.";if(m)g("vzSt").classList.add("bad");else g("vzSt").classList.remove("bad")})};
+  if(mic){mic.onclick=()=>{if(REC){try{REC.stop()}catch(e){}return}start()};if(!txt)start()}
+  g("vzGo").onclick=()=>{const t=ta.value.trim();if(!t){g("vzErr").textContent="Dictá o escribí algo primero.";return}close();applyVoz(t)};
+}
+function applyVoz(text,force){
+  const r=Voz.parse(text,vozCtx(),force);
+  if(!r.kind)return openVoz(text,"No me di cuenta si es una atención, una operación o un alta. Elegí abajo o agregá una palabra clave (vacuné, vendí, alta…). <span class='vz-alt' style='margin-top:8px'><button type='button' class='btn btn-sm' data-vzk='at'>Atención</button><button type='button' class='btn btn-sm' data-vzk='op'>Operación</button><button type='button' class='btn btn-sm' data-vzk='alta'>Alta de animal</button></span>"),bindVozKinds(text);
+  const f=r.fill;
+  if(r.kind==="at")openEv(null,{fill:f,voz:r});
+  else if(r.kind==="op")openOp(null,{fill:f,voz:r});
+  else if((f.caravanas||[]).length>1||f.sinCaravana)openAltaMult({fill:f,voz:r});
+  else openAnim(null,{caravana:(f.caravanas||[])[0]||"",cat:f.cat,raza:f.raza,sexo:f.sexo||"H",esp:f.esp,est:f.est,lote:f.lote,pesoIni:f.pesoIni,nac:f.nac,madre:f.madre},r);
+}
+function bindVozKinds(text){setTimeout(()=>document.querySelectorAll("#ovPago [data-vzk]").forEach(b=>b.onclick=()=>{const ov=$("#ovPago");ov.hidden=true;ov.innerHTML="";document.body.style.overflow="";applyVoz(text,b.dataset.vzk)}),0)}
+const vozBan=r=>r?`<div class="voz-ban"><div><b>Completado por voz.</b> Revisá y corregí antes de guardar.</div><q>${esc(r.texto)}</q>${r.entendido.length?`<div class="vz-chips">${r.entendido.map(([k,v])=>`<span><small>${esc(k)}</small>${esc(v)}</span>`).join("")}</div>`:""}${r.aviso?`<div class="err">${esc(r.aviso)}</div>`:""}
+  <div class="vz-alt"><span>¿Era otra cosa?</span><button type="button" class="btn btn-sm" data-vzk="at">Atención</button><button type="button" class="btn btn-sm" data-vzk="op">Operación</button><button type="button" class="btn btn-sm" data-vzk="alta">Alta</button><button type="button" class="btn btn-sm btn-ghost" data-vzobs>Copiar a observaciones</button></div></div>`:"";
+function bindVozBan(ov,r){if(!r)return;ov.querySelectorAll("[data-vzk]").forEach(b=>b.onclick=()=>{closeOv();applyVoz(r.texto,b.dataset.vzk)});
+  const o=ov.querySelector("[data-vzobs]");if(o)o.onclick=()=>{const ta=ov.querySelector("textarea");if(ta){ta.value=(ta.value?ta.value+"\n":"")+r.texto;ta.dispatchEvent(new Event("input",{bubbles:true}));o.remove()}}}
+function addMic(ov){if(!SRC)return;ov.querySelectorAll("textarea").forEach(ta=>{const lab=ov.querySelector(`label[for="${ta.id}"]`);if(!lab||lab.querySelector(".mic-sm"))return;
+  const b=document.createElement("button");b.type="button";b.className="mic-sm";b.innerHTML=MIC+"<span>Dictar</span>";b.setAttribute("aria-label","Dictar observaciones");lab.appendChild(b);
+  b.onclick=e=>{e.preventDefault();if(REC){try{REC.stop()}catch(x){}return}const base=ta.value.trim();b.classList.add("on");
+    listen((fin,int)=>{ta.value=(base?base+" ":"")+fin+(int?" "+int:"")},err=>{b.classList.remove("on");const m=vozErr(err);if(m)toast(m)})}})}
+function tactoPV(evs){let p=0,v=0;evs.forEach(e=>{const r=String(e.res||"").toLowerCase();const mp=r.match(/(\d+)\s*pre[ñn]/),mv=r.match(/(\d+)\s*vac/);if(mp||mv){p+=mp?+mp[1]:0;v+=mv?+mv[1]:0}else if(/pre[ñn]/.test(r))p+=evCant(e);else if(/vac/.test(r))v+=evCant(e)});return {p,v,t:p+v}}
+
 function chooser(){
   if(!canW())return toast("Tu clave es de sólo lectura.");
   const ov=$("#ovOp");
   ov.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="chT" style="max-width:480px"><div class="sh-h"><h3 id="chT">¿Qué querés registrar?</h3><button class="x" data-close aria-label="Cerrar">×</button></div>
    <div class="sh-b"><div class="chooser">
+    <button data-ch="vz" class="vz-main"><span class="vz-ic">${MIC}</span><span><b>Dictar por voz</b><small>Contalo hablando y la app completa el formulario</small></span></button>
     <button data-ch="ev"><b>Atención de animales</b><small>Vacuna, tratamiento, tacto, pesada, parto, muerte…</small></button>
     <button data-ch="an"><b>Alta de animal</b><small>Un animal con su caravana</small></button>
     <button data-ch="am"><b>Alta de varios animales</b><small>Un lote entero de una vez</small></button>
@@ -664,7 +951,7 @@ function chooser(){
    </div></div></div>`;
   ov.hidden=false;document.body.style.overflow="hidden";
   ov.querySelector("[data-close]").onclick=closeOv;ov.onclick=e=>{if(e.target===ov)closeOv()};
-  ov.querySelectorAll("[data-ch]").forEach(b=>b.onclick=()=>{const c=b.dataset.ch;closeOv();if(c==="ev")openEv();else if(c==="an")openAnim();else if(c==="am")openAltaMult();else openOp()});
+  ov.querySelectorAll("[data-ch]").forEach(b=>b.onclick=()=>{const c=b.dataset.ch;closeOv();if(c==="vz")openVoz();else if(c==="ev")openEv();else if(c==="an")openAnim();else if(c==="am")openAltaMult();else openOp()});
 }
 function closeOv(){const ov=$("#ovOp");ov.hidden=true;ov.innerHTML="";document.body.style.overflow="";F=null}
 
@@ -767,12 +1054,12 @@ function vTablero(){
   const stE=Object.entries(group(act,a=>a.est||"Sin campo",()=>1)).sort((a,b)=>b[1]-a[1]);
   const stHtml=stC.length?stC.map(([k,v])=>hbar(k,v,stC[0][1],v.toLocaleString("es-AR")+" cab.")).join(""):`<p class="hint">Todavía no hay animales dados de alta. Cargalos desde “+”.</p>`;
   // sanidad
-  const tactos=evY.filter(e=>/tacto|diagn/i.test(e.tipo)&&e.res);const pren=tactos.filter(e=>/pre[ñn]/i.test(e.res)).length;
+  const TPV=tactoPV(evY.filter(e=>/tacto|diagn/i.test(e.tipo)&&e.res));
   const muertes=evY.filter(e=>/muerte/i.test(e.tipo));const nMu=sum(muertes,evCant);
   const byTipoAt=Object.entries(group(evY,e=>e.tipo,evCant)).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const idx=haciendaIdx();const gd=act.map(a=>gdp(pesosDe(a,idx))).filter(x=>x!=null);
   const sanHtml=`<div class="mini-kpis"><div><b class="num">${evY.length}</b><span>atenciones ${Y}</span></div><div><b class="num">${fmtM(costoSan)}</b><span>costo sanitario</span></div>
-    <div><b class="num">${tactos.length?pct(pren/tactos.length):"–"}</b><span>preñez en tactos</span></div><div><b class="num">${nMu}</b><span>muertes ${Y}</span></div>
+    <div><b class="num">${TPV.t?pct(TPV.p/TPV.t):"–"}</b><span>preñez en tactos</span></div><div><b class="num">${nMu}</b><span>muertes ${Y}</span></div>
     <div><b class="num">${gd.length?(sum(gd,x=>x)/gd.length).toLocaleString("es-AR",{maximumFractionDigits:2})+" kg":"–"}</b><span>ganancia diaria prom.</span></div></div>
     ${byTipoAt.length?`<div class="hbars" style="margin-top:12px">${byTipoAt.map(([k,v])=>hbar(k,v,byTipoAt[0][1],plural(v,"animal","animales"),"","var(--info)")).join("")}</div>`:""}`;
   const recHtml=rec.slice(0,6).map(e=>{const d=dias(HOY,e.prox);return `<button class="rec-row" data-rec="${esc(e.id)}"><span class="pill ${d<0?"p-vencido":d<=7?"p-pendiente":"p-cerrado"}">${d<0?"Vencida "+(-d)+" d":d===0?"Hoy":"En "+d+" d"}</span><span><b>${esc(e.tipo)}${e.producto?" · "+esc(e.producto):""}</b><small>${evTarget(e)}${e.est?" · "+esc(e.est):""}</small></span></button>`}).join("")||`<p class="hint">No hay atenciones programadas. Al registrar una vacuna o tratamiento podés marcar cuándo toca la próxima.</p>`;
@@ -846,8 +1133,8 @@ function insights(A,yr,Y,tIng,tEgr,act,rec,evY){
   if(r7.length)out.push({lvl:"warn",t:`${plural(r7.length,"atención programada","atenciones programadas")} esta semana`,d:r7.slice(0,3).map(e=>`${esc(e.tipo)} (${fmtD(e.prox)})`).join(", ")+". Organizá la manga y los productos."});
   const mu=evY.filter(e=>/muerte/i.test(e.tipo));const nMu=sum(mu,evCant);
   if(nMu&&act.length){const t=nMu/(act.length+nMu);out.push({lvl:t>.03?"warn":"info",t:`Mortandad ${Y}: ${pct(t)}`,d:`${plural(nMu,"animal muerto","animales muertos")} sobre ${(act.length+nMu).toLocaleString("es-AR")}. ${t>.03?"Está por encima de un rodeo sano; revisá causas con el veterinario.":""}`})}
-  const tactos=evY.filter(e=>/tacto|diagn/i.test(e.tipo)&&e.res);
-  if(tactos.length>=3){const p=tactos.filter(e=>/pre[ñn]/i.test(e.res)).length/tactos.length;out.push({lvl:p<.8?"warn":"ok",t:`Preñez en tactos: ${pct(p)}`,d:`Sobre ${tactos.length} diagnósticos cargados en ${Y}.${p<.8?" Revisá las vacías antes de la próxima temporada de servicio.":""}`})}
+  const TP=tactoPV(evY.filter(e=>/tacto|diagn/i.test(e.tipo)&&e.res));
+  if(TP.t>=5){const p=TP.p/TP.t;out.push({lvl:p<.8?"warn":"ok",t:`Preñez en tactos: ${pct(p)}`,d:`${TP.p} preñadas y ${TP.v} vacías en ${Y}.${p<.8?" Revisá las vacías antes de la próxima temporada de servicio.":""}`})}
   const ingAll=A.filter(o=>o.sentido==="ingreso");
   const venc=ingAll.filter(o=>o.vencido>0).sort((a,b)=>b.vencido-a.vencido);
   if(venc.length){const t=sum(venc,o=>o.vencido),b=venc[0];out.push({lvl:"crit",t:`${fmtM(t)} vencidos sin cobrar`,d:`${plural(venc.length,"operación","operaciones")}. La mayor: ${esc(b.contra||"sin cliente")} debe ${fmtM(b.vencido)} desde el ${fmtD(b.venc)}.`})}
@@ -876,7 +1163,7 @@ function vHacienda(){
   const opt=(arr,v)=>arr.map(x=>`<option ${x===v?"selected":""}>${esc(x)}</option>`).join("");
   const nSel=[...S.sel].filter(id=>S.recs.get(id)).length;
   const head=`<div class="h-row"><div><h1>Hacienda</h1><p>${act.length.toLocaleString("es-AR")} cabezas activas${S.est?" en "+esc(S.est):""}. Tocá un animal para ver su historia.</p></div>
-    <div class="sp">${canW()?'<button class="btn" data-act="am">Alta de varios</button><button class="btn btn-prim" data-act="an">Alta de animal</button>':""}</div></div>
+    <div class="sp">${canW()?`<button class="btn" data-act="vz">${MIC}Dictar</button><button class="btn" data-act="am">Alta de varios</button><button class="btn btn-prim" data-act="an">Alta de animal</button>`:""}</div></div>
     ${chips.length?`<div class="chips" style="margin-bottom:12px">${chips.map(([k,v])=>`<button class="chip" data-hcat="${esc(k)}" aria-pressed="${H.cat===k}">${esc(k)} <b class="num">${v}</b></button>`).join("")}</div>`:""}
     <div class="filters">
       <input id="hq" type="search" placeholder="Buscar caravana, nombre, raza, lote…" value="${esc(H.q)}">
@@ -895,10 +1182,10 @@ function vHacienda(){
     `<div class="tbl-wrap desk"><table><thead><tr><th class="ck"></th><th>Caravana</th><th>Especie</th><th>Categoría</th><th>Raza</th><th>Sexo</th><th>Edad</th><th>Campo</th><th>Lote</th><th class="r">Último peso</th><th>Última atención</th><th>Estado</th></tr></thead><tbody>${rows}</tbody></table></div><div class="cards">${cards}</div>`+bar;
 }
 
-function openAnim(id,pre){
+function openAnim(id,pre,voz){
   if(!canW()&&!id)return toast("Tu clave es de sólo lectura.");
   const a=id?S.recs.get(id):null;const C=cfg();const ro=!canW();
-  F=a?JSON.parse(JSON.stringify(a)):Object.assign({esp:C.especies[0]||"Bovino",sexo:"H",est:S.est||(C.ests[0]||""),estado:"activo",alta:HOY},pre||{});
+  F=a?JSON.parse(JSON.stringify(a)):Object.assign({esp:C.especies[0]||"Bovino",sexo:"H",est:S.est||(C.ests[0]||""),estado:"activo",alta:HOY},...Object.entries(pre||{}).filter(([,v])=>v!==undefined&&v!=="").map(([k,v])=>({[k]:v})));
   const idx=haciendaIdx();
   let hist="";
   if(a){const evs=L("eventos").filter(e=>e.modo!=="lote"&&(e.anims||[]).includes(a.id)).sort((x,y)=>y.fecha.localeCompare(x.fecha));
@@ -907,7 +1194,7 @@ function openAnim(id,pre){
       ${evs.length?`<div class="tl">${evs.map(e=>`<button type="button" class="tl-i" data-evid="${esc(e.id)}"><span class="num">${fmtD(e.fecha)}</span><span><b>${esc(e.tipo)}</b>${e.producto?" · "+esc(e.producto):""}${e.dosis?" "+esc(e.dosis):""}${e.res?" · "+esc(e.res):""}${e.pesos&&e.pesos[a.id]?" · "+e.pesos[a.id]+" kg":""}${e.resp?`<small>${esc(e.resp)}</small>`:""}</span></button>`).join("")}</div>`:`<p class="hint">Sin atenciones registradas.</p>`}</div>`}
   const ov=$("#ovOp");const dis=ro?"disabled":"";
   ov.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="anT"><div class="sh-h"><h3 id="anT">${a?"Animal "+esc(aLbl(a)):"Alta de animal"}</h3><button class="x" data-close aria-label="Cerrar">×</button></div>
-   <form class="sh-b" id="anForm" novalidate>
+   <form class="sh-b" id="anForm" novalidate>${vozBan(voz)}
     <div class="frow two"><div class="fs"><label for="a-car">Caravana / ID</label><input id="a-car" value="${esc(F.caravana||"")}" placeholder="Ej: 0452" ${dis}></div><div class="fs"><label for="a-nom">Nombre / seña (opcional)</label><input id="a-nom" value="${esc(F.nombre||"")}" placeholder="Ej: Moro" ${dis}></div></div>
     <div class="fs"><span class="lab">Especie</span><div class="chips" id="a-esp">${uniq(C.especies.concat([F.esp])).map(x=>`<button type="button" class="chip" data-x="${esc(x)}" aria-pressed="${F.esp===x}" ${dis}>${esc(x)}</button>`).join("")}</div></div>
     <div class="frow"><div class="fs"><label for="a-cat">Categoría</label><input id="a-cat" list="dl-cat" value="${esc(F.cat||"")}" placeholder="Ej: Vaquillonas" ${dis}></div><div class="fs"><label for="a-raza">Raza</label><input id="a-raza" list="dl-raza" value="${esc(F.raza||"")}" placeholder="Ej: Brangus" ${dis}></div>
@@ -927,7 +1214,7 @@ function openAnim(id,pre){
   const g=i=>ov.querySelector("#"+i);
   ov.querySelectorAll("[data-close]").forEach(b=>b.onclick=closeOv);ov.onclick=e=>{if(e.target===ov)closeOv()};
   const seg=(box,key)=>g(box).onclick=e=>{const b=e.target.closest("[data-x]");if(!b)return;F[key]=b.dataset.x;g(box).querySelectorAll("[data-x]").forEach(x=>x.setAttribute("aria-pressed",x===b))};
-  seg("a-esp","esp");seg("a-sexo","sexo");
+  seg("a-esp","esp");seg("a-sexo","sexo");bindVozBan(ov,voz);addMic(ov);
   ov.querySelectorAll("[data-evid]").forEach(b=>b.onclick=()=>{closeOv();openEv(b.dataset.evid)});
   if(g("anEv"))g("anEv").onclick=()=>{closeOv();openEv(null,{anims:[a.id],est:a.est})};
   if(g("anDel"))g("anDel").onclick=()=>{g("anFoot").innerHTML=`<div class="confirm"><span>¿Eliminar este animal? Si se vendió o murió, mejor cambiá el estado.</span><button class="btn btn-sm" id="dNo">Cancelar</button><button class="btn btn-sm btn-danger" id="dYes">Eliminar</button></div>`;g("dNo").onclick=()=>openAnim(id);g("dYes").onclick=async()=>{await delRec(id);closeOv();toast("Animal eliminado")}};
@@ -950,12 +1237,12 @@ function parseCaravanas(txt,pre,desde,hasta){
   else if(desde!==""&&hasta!==""&&+hasta>=+desde&&+hasta-+desde<2000){const w=String(desde).length;for(let n=+desde;n<=+hasta;n++)list.push(pre+String(n).padStart(w,"0"))}
   return list;
 }
-function openAltaMult(){
+function openAltaMult(pre){
   if(!canW())return toast("Tu clave es de sólo lectura.");
   const C=cfg();F={esp:C.especies[0]||"Bovino",sexo:"H"};
   const ov=$("#ovOp");
   ov.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="amT"><div class="sh-h"><h3 id="amT">Alta de varios animales</h3><button class="x" data-close aria-label="Cerrar">×</button></div>
-   <form class="sh-b" id="amForm" novalidate>
+   <form class="sh-b" id="amForm" novalidate>${vozBan(pre&&pre.voz)}
     <div class="fs"><span class="lab">Especie</span><div class="chips" id="m-esp">${C.especies.map(x=>`<button type="button" class="chip" data-x="${esc(x)}" aria-pressed="${F.esp===x}">${esc(x)}</button>`).join("")}</div></div>
     <div class="frow"><div class="fs"><label for="m-cat">Categoría</label><input id="m-cat" list="dl-cat" placeholder="Ej: Terneros"></div><div class="fs"><label for="m-raza">Raza</label><input id="m-raza" placeholder="Ej: Brangus"></div>
       <div class="fs"><span class="lab">Sexo</span><div class="seg" id="m-sexo">${[["H","Hembra"],["M","Macho"]].map(([v,l])=>`<button type="button" data-x="${v}" aria-pressed="${F.sexo===v}">${l}</button>`).join("")}</div></div></div>
@@ -986,6 +1273,10 @@ function openAltaMult(){
     const base={esp:F.esp,cat:g("m-cat").value.trim(),raza:g("m-raza").value.trim(),sexo:F.sexo,est:g("m-est").value.trim(),lote:g("m-lote").value.trim(),nac:g("m-nac").value,pesoIni:+g("m-peso").value||0,alta:HOY,estado:"activo"};
     const items=l.map(c=>["animales",Object.assign({caravana:c},base)]);for(let i=0;i<sinC;i++)items.push(["animales",Object.assign({caravana:""},base)]);
     await saveMany(items);closeOv();toast(plural(items.length,"animal dado de alta","animales dados de alta"))};
+  if(pre&&pre.fill){const f=pre.fill;if(f.esp){F.esp=f.esp;g("m-esp").querySelectorAll("[data-x]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.x===f.esp))}
+    if(f.sexo){F.sexo=f.sexo;g("m-sexo").querySelectorAll("[data-x]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.x===f.sexo))}
+    [["m-cat","cat"],["m-raza","raza"],["m-est","est"],["m-lote","lote"],["m-nac","nac"],["m-peso","pesoIni"],["m-sin","sinCaravana"]].forEach(([i,k])=>{if(f[k])g(i).value=f[k]});
+    if((f.caravanas||[]).length)g("m-list").value=f.caravanas.join(", ");bindVozBan(ov,pre.voz)}
   prev();
 }
 function openMover(){
@@ -1012,7 +1303,7 @@ function vAtenciones(){
   const EV=L("eventos").filter(e=>!S.est||e.est===S.est).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   const q=S.at.q.trim().toLowerCase();
   const H=EV.filter(e=>(!S.at.tipo||e.tipo===S.at.tipo)&&(!q||[e.tipo,e.producto,e.animLbl,e.lote,e.resp,e.res,e.obs].join(" ").toLowerCase().includes(q)));
-  const head=`<div class="h-row"><div><h1>Atenciones</h1><p>Sanidad, reproducción, pesadas y manejo de los animales.</p></div><div class="sp">${canW()?'<button class="btn btn-prim" data-act="ev">Registrar atención</button>':""}</div></div>
+  const head=`<div class="h-row"><div><h1>Atenciones</h1><p>Sanidad, reproducción, pesadas y manejo de los animales.</p></div><div class="sp">${canW()?`<button class="btn" data-act="vz">${MIC}Dictar</button><button class="btn btn-prim" data-act="ev">Registrar atención</button>`:""}</div></div>
     <div class="subtabs"><button data-att="prox" aria-pressed="${T==="prox"}">Próximas (${rec.length})</button><button data-att="hist" aria-pressed="${T==="hist"}">Historial (${EV.length})</button></div>`;
   if(T==="prox"){
     if(!rec.length)return head+`<div class="empty"><h3>No hay atenciones programadas</h3><p>Cuando registres una vacuna, desparasitación o tratamiento, marcá cuándo toca la próxima y aparece acá.</p></div>`;
@@ -1034,10 +1325,13 @@ function openEv(id,pre){
     producto:base&&base.producto||"",dosis:base&&base.dosis||"",via:base&&base.via||"",resp:(S.session&&S.session.nombre)||"",costo:"",prox:"",res:"",obs:"",pesos:{}};
   if(!e0&&!base){const t=TA.find(x=>x.n===F.tipo);if(t&&+t.d)F.prox=addDays(HOY,+t.d)}
   if(base&&!e0){const t=TA.find(x=>x.n===F.tipo);if(t&&+t.d)F.prox=addDays(HOY,+t.d)}
+  if(pre&&pre.fill){const fl=Object.assign({},pre.fill);Object.keys(fl).forEach(k=>{if(fl[k]===undefined)delete fl[k]});Object.assign(F,fl);
+    if(fl.prox===undefined){const t=TA.find(x=>x.n===F.tipo);F.prox=t&&+t.d?addDays(F.fecha,+t.d):""}
+    if(fl.est===undefined&&F.anims&&F.anims.length){const a0=S.recs.get(F.anims[0]);if(a0)F.est=a0.est||""}}
   F.sel=new Set(F.anims||[]);F.pesos=F.pesos||{};F._from=base?base.id:null;F._q="";F._lote="";
   const ov=$("#ovOp");const dis=ro?"disabled":"";
   ov.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="evT"><div class="sh-h"><h3 id="evT">${e0?"Atención":"Registrar atención"}</h3><button class="x" data-close aria-label="Cerrar">×</button></div>
-   <form class="sh-b" id="evForm" novalidate>
+   <form class="sh-b" id="evForm" novalidate>${vozBan(pre&&pre.voz)}
     <div class="fs"><span class="lab">Tipo de atención</span><div class="chips" id="e-tipo">${uniq(TA.map(t=>t.n).concat([F.tipo])).map(n=>`<button type="button" class="chip" data-x="${esc(n)}" aria-pressed="${F.tipo===n}" ${dis}>${esc(n)}</button>`).join("")}</div></div>
     <div class="frow two"><div class="fs"><label for="e-fecha">Fecha</label><input id="e-fecha" type="date" value="${F.fecha}" ${dis}></div><div class="fs"><label for="e-est">Establecimiento</label><input id="e-est" list="dl-est" value="${esc(F.est)}" ${dis}></div></div>
     <div class="fs"><span class="lab">¿A quiénes?</span><div class="seg" id="e-modo"><button type="button" data-x="anim" aria-pressed="${F.modo!=="lote"}" ${dis}>Animales con caravana</button><button type="button" data-x="lote" aria-pressed="${F.modo==="lote"}" ${dis}>Lote o grupo</button></div></div>
@@ -1091,7 +1385,7 @@ function openEv(id,pre){
     ov.querySelectorAll("[data-prox]").forEach(b=>b.onclick=()=>{g("e-prox").value=b.dataset.prox===""?"":addDays(g("e-fecha").value||HOY,+b.dataset.prox);paintProx()});
     g("e-prox").onchange=paintProx;
   }
-  target();paintProx();
+  target();paintProx();bindVozBan(ov,pre&&pre.voz);addMic(ov);
   if(g("evDel"))g("evDel").onclick=()=>{g("evFoot").innerHTML=`<div class="confirm"><span>¿Eliminar esta atención?</span><button class="btn btn-sm" id="dNo">Cancelar</button><button class="btn btn-sm btn-danger" id="dYes">Eliminar</button></div>`;g("dNo").onclick=()=>openEv(id);g("dYes").onclick=async()=>{await delRec(id);closeOv();toast("Atención eliminada")}};
   g("evForm").onsubmit=e=>e.preventDefault();
   if(g("evSave"))g("evSave").onclick=async()=>{
@@ -1153,17 +1447,23 @@ function vCobros(){
 }
 
 let F=null;
-function openOp(id){
+function openOp(id,pre){
   const o=id?S.recs.get(id):null;const ro=!canW();
   if(!o&&ro)return toast("Tu clave es de sólo lectura.");
   const t0=tipos()[0];
   F=o?JSON.parse(JSON.stringify(o)):{fecha:HOY,tipo:t0.n,sentido:t0.s,est:S.est||(cfg().ests[0]||""),cat:"",cant:"",kg:"",precio:"",total:"",contra:"",obs:"",pagos:[]};
   F.formas=o?JSON.parse(JSON.stringify(formasOf(o))).map(f=>Object.assign({ya:false},f)):[{medio:medios()[0],monto:0,venc:addDays(HOY,30),det:"",ya:false}];
   F._manual=!!(o&&+o.total&&Math.round(+o.cant*+o.precio)!==Math.round(+o.total));F._fmManual=!!o;F._new=!o;
+  if(pre&&pre.fill){const fl=pre.fill;["fecha","tipo","sentido","est","cat","cant","kg","precio","total","contra","obs"].forEach(k=>{if(fl[k]!==undefined&&fl[k]!=="")F[k]=fl[k]});
+    if(!fl.sentido)F.sentido=tipoS(F.tipo);
+    if(fl.formas&&fl.formas.length){F.formas=fl.formas.map(x=>Object.assign({},x));F._fmManual=fl.formas.length>1||!!fl.formas[0].monto}
+    else F.formas[0].venc=addDays(F.fecha,fl.plazoGlobal!=null?fl.plazoGlobal:30);
+    if(fl.total&&!(fl.cant&&fl.precio))F._manual=true;
+    if(F._fmManual&&F.formas.length===1&&!F.formas[0].monto)F._fmManual=false}
   const tl=tipos().slice();if(o&&!tl.find(t=>t.n===o.tipo))tl.push({n:o.tipo,s:o.sentido,d:""});
   const ov=$("#ovOp");const dis=ro?"disabled":"";
   ov.innerHTML=`<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="opT"><div class="sh-h"><h3 id="opT">${o?"Operación":"Nueva operación"}</h3><button class="x" data-close aria-label="Cerrar">×</button></div>
-   <form class="sh-b" id="opForm" novalidate>
+   <form class="sh-b" id="opForm" novalidate>${vozBan(pre&&pre.voz)}
     <div class="fs"><span class="lab">Tipo de operación</span><div class="tchips" id="tchips">${tl.map(t=>`<button type="button" class="tchip" data-t="${esc(t.n)}" aria-pressed="${F.tipo===t.n}" ${dis}><b>${esc(t.n)}</b><small>${esc(t.d||"")}</small></button>`).join("")}</div></div>
     <div class="frow two st-m"><div class="fs"><label for="f-fecha">Fecha</label><input id="f-fecha" type="date" value="${F.fecha}" ${dis}></div>
       <div class="fs"><span class="lab">Movimiento de dinero</span><div class="seg" id="seg">${[["ingreso","Ingreso"],["egreso","Egreso"],["neutro","Sin dinero"]].map(([v,l])=>`<button type="button" data-s="${v}" aria-pressed="${F.sentido===v}" ${dis}>${l}</button>`).join("")}</div></div></div>
@@ -1219,7 +1519,7 @@ function openOp(id){
   if(g("opSave"))g("opSave").onclick=saveOp;
   if(g("opPay"))g("opPay").onclick=()=>{closeOv();openPago(o.id)};
   if(g("opDel"))g("opDel").onclick=()=>{g("opFoot").innerHTML=`<div class="confirm"><span>¿Eliminar esta operación y sus cobros?</span><button class="btn btn-sm" id="dNo">Cancelar</button><button class="btn btn-sm btn-danger" id="dYes">Eliminar</button></div>`;g("dNo").onclick=()=>openOp(o.id);g("dYes").onclick=async()=>{await delRec(o.id);closeOv();toast("Operación eliminada")}};
-  renderFormas();upd();
+  renderFormas();upd();bindVozBan(ov,pre&&pre.voz);addMic(ov);
 }
 async function saveOp(){
   const ov=$("#ovOp");const g=i=>ov.querySelector("#"+i);const err=g("opErr");err.textContent="";
@@ -1289,6 +1589,8 @@ function vAjustes(){
    ${simple("especies","Especies","Bovinos, equinos, ovinos…",C.especies,v=>use("animales","esp",v))}
    ${simple("medios","Medios de pago","Se pueden combinar en una misma operación.",C.medios,null)}
    ${simple("productos","Productos sanitarios","Sugerencias al registrar una atención.",C.productos,v=>use("eventos","producto",v))}
+   <section class="card"><h2>Dictado por voz</h2><p class="sub">${SRC?"Este navegador tiene dictado. Según el celu, puede necesitar señal para entender la voz.":"Este navegador no trae dictado propio: usá el micrófono del teclado dentro del cuadro de dictado."} El texto se interpreta en el equipo, así que completar el formulario funciona sin señal.</p>
+    <div class="cfg-act">${SRC&&SRC.available?`<button class="btn btn-sm" id="btnVozOff">${vozLocal()?"Dictado sin señal: preparado":"Preparar dictado sin señal"}</button>`:""}<button class="btn btn-sm" data-act="vz" ${dis}>${MIC}Probar dictado</button><span class="msg" id="msg-voz"></span></div></section>
    <section class="card"><h2>Empresa</h2><p class="sub">Nombre que se ve arriba y en la pantalla de clave.</p>
     <div class="lst"><div class="fs"><label for="c-emp">Nombre</label><input id="c-emp" value="${esc(C.empresa||"")}" ${dis}></div><div class="fs"><label for="c-sub">Subtítulo</label><input id="c-sub" value="${esc(C.sub||"")}" ${dis}></div></div>
     <div class="cfg-act"><span style="flex:1"></span><span class="msg" id="msg-emp"></span><button class="btn btn-sm btn-green" data-save="emp" ${dis}>Guardar</button></div></section>
@@ -1343,7 +1645,7 @@ function bindView(){
   m.querySelectorAll("[data-y]").forEach(b=>b.onclick=()=>{S.year=b.dataset.y;S.selM=null;render()});
   m.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{S.selM=+b.dataset.m;render()});
   m.querySelectorAll("[data-v2]").forEach(b=>b.onclick=()=>{S.at.tab="prox";setView(b.dataset.v2)});
-  m.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{const a=b.dataset.act;if(a==="new")chooser();else if(a==="an")openAnim();else if(a==="am")openAltaMult();else if(a==="ev")openEv();else openOp()});
+  m.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{const a=b.dataset.act;if(a==="new")chooser();else if(a==="vz")openVoz();else if(a==="an")openAnim();else if(a==="am")openAltaMult();else if(a==="ev")openEv();else openOp()});
   m.querySelectorAll("tr[data-id],.ocard[data-id]").forEach(r=>r.onclick=()=>openOp(r.dataset.id));
   m.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openOp(b.dataset.edit));
   m.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>openPago(b.dataset.pay));
@@ -1374,6 +1676,11 @@ function bindView(){
     const ed=$("#btnEjDel");if(ed)ed.onclick=()=>{$("#ejBox").innerHTML=`<div class="confirm"><span>¿Borrar todos los registros de ejemplo?</span><button class="btn btn-sm" id="ejNo">No</button><button class="btn btn-sm btn-danger" id="ejYes">Sí, borrar</button></div>`;$("#ejNo").onclick=render;
       $("#ejYes").onclick=async()=>{const rs=[...S.recs.values()].filter(r=>r.ejemplo&&!r.d).map(r=>Object.assign({},r,{d:1}));await putRecs(rs);afterWrite();toast("Ejemplos borrados")}};
     $("#btnLock").onclick=lockNow;
+    const bvo=$("#btnVozOff");if(bvo)bvo.onclick=async()=>{const m=$("#msg-voz");m.textContent="Preparando…";m.style.color="";
+      try{const o={langs:["es-AR"],processLocally:true};let st=await SRC.available(o);if(st!=="available"&&SRC.install){await SRC.install(o);st=await SRC.available(o)}
+        if(st==="available"){try{localStorage.setItem("arragen.vozLocal","1")}catch(e){}m.textContent="Listo: el dictado funciona sin señal en este celu.";m.style.color="var(--ok)"}
+        else{m.textContent="Este celu no permite descargar el dictado. Sin señal usá el micrófono del teclado.";m.style.color="var(--warn)"}}
+      catch(e){m.textContent="Este celu no permite descargar el dictado. Sin señal usá el micrófono del teclado.";m.style.color="var(--warn)"}};
     $("#btnOut").onclick=()=>{const n=S.pending.size;$("#sesBox").innerHTML=`<div class="confirm"><span>${n?`Hay ${plural(n,"cambio que todavía no se envió","cambios que todavía no se enviaron")}. Si seguís, se pierden.`:"Se borran los datos de este equipo (en la planilla quedan todos)."}</span><button class="btn btn-sm" id="oNo">Cancelar</button><button class="btn btn-sm btn-danger" id="oYes">Borrar y salir</button></div>`;$("#oNo").onclick=render;
       $("#oYes").onclick=async()=>{await Store.clear();try{sessionStorage.clear()}catch(e){}S.recs.clear();S.pending.clear();S.session=null;S.since=0;S.lastSync=0;S.unlocked=false;render()}};
   }
